@@ -40,7 +40,7 @@ tv = TfidfVectorizer(ngram_range=(1, 3),
                      smooth_idf=1,
                      sublinear_tf=1,
                      stop_words="english",
-                     max_features=40000)
+                     max_features=100000)
 trn_term_doc = tv.fit_transform(df_train[COMMENT])
 test_term_doc = tv.transform(df_test[COMMENT])
 
@@ -51,7 +51,7 @@ tv = TfidfVectorizer(
     analyzer='char',
     stop_words='english',
     ngram_range=(2, 6),
-    max_features=40000)
+    max_features=100000)
 trn_char_doc = tv.fit_transform(df_train[COMMENT])
 test_char_doc = tv.transform(df_test[COMMENT])
 

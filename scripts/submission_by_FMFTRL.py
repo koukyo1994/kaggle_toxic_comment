@@ -40,7 +40,7 @@ tv = TfidfVectorizer(ngram_range=(1, 3),
                      smooth_idf=1,
                      sublinear_tf=1,
                      stop_words="english",
-                     max_features=50000)
+                     max_features=100000)
 trn_term_doc = tv.fit_transform(df_train[COMMENT])
 test_term_doc = tv.transform(df_test[COMMENT])
 
@@ -51,20 +51,21 @@ tv = TfidfVectorizer(
     analyzer='char',
     stop_words='english',
     ngram_range=(2, 6),
-    max_features=50000)
+    max_features=100000)
 trn_char_doc = tv.fit_transform(df_train[COMMENT])
 test_char_doc = tv.transform(df_test[COMMENT])
+
+del tv
+gc.collect()
 
 print("Concatenating the feature matrices.")
 x = hstack([trn_char_doc, trn_term_doc])
 test_x = hstack([test_char_doc, test_term_doc])
 
-del tv
-gc.collect()
-
 x = x.tocsr()
 test_x = test_x.tocsr()
 
+print("Splitting the dataset.")
 x, x_eval, y, y_eval = train_test_split(x,
                                         df_train.loc[:, ['toxic', 'severe_toxic', 'obscene',
                                                          'threat', 'insult', 'identity_hate']],
@@ -72,55 +73,6 @@ x, x_eval, y, y_eval = train_test_split(x,
                                         random_state=123)
 
 columns = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
-
-X_toxic = lgbm.Dataset(x, y['toxic'])
-X_severe = lgbm.Dataset(x, y['severe_toxic'])
-X_obscene = lgbm.Dataset(x, y['obscene'])
-X_threat = lgbm.Dataset(x, y['threat'])
-X_insult = lgbm.Dataset(x, y['insult'])
-X_hate = lgbm.Dataset(x, y['identity_hate'])
-
-X_toxic_eval = lgbm.Dataset(x_eval, y_eval['toxic'])
-X_severe_eval = lgbm.Dataset(x_eval, y_eval['severe_toxic'])
-X_obscene_eval = lgbm.Dataset(x_eval, y_eval['obscene'])
-X_threat_eval = lgbm.Dataset(x_eval, y_eval['threat'])
-X_insult_eval = lgbm.Dataset(x_eval, y_eval['insult'])
-X_hate_eval = lgbm.Dataset(x_eval, y_eval['identity_hate'])
-
-X_list = [X_toxic, X_severe, X_obscene, X_threat, X_insult, X_hate]
-X_eval = [X_toxic_eval, X_severe_eval, X_obscene_eval, X_threat_eval, X_insult_eval, X_hate_eval]
-
-params = {
-        'task': 'train',
-        'boosting_type': 'gbdt',
-        'objective': 'binary',
-        'metric': {'auc'},
-        'num_class': 1,
-        'learning_rate': 0.1,
-        'num_leaves': 31,
-        'min_data_in_leaf': 20,
-        'num_threads': 8,
-        'verbose': 0
-}
-
-preds_LGBM = []
-for i, j in enumerate(columns):
-    print('fit ', j)
-    gbm = lgbm.train(params,
-                     X_list[i],
-                     valid_sets=X_eval[i],
-                     num_boost_round=200,
-                     early_stopping_rounds=30)
-    y_pred = gbm.predict(test_x, num_iteration=gbm.best_iteration)
-    preds_LGBM.append(y_pred)
-
-preds_Ridge = []
-for i, j in enumerate(columns):
-    print('fit ', j)
-    ridge = Ridge(alpha=5.0, fit_intercept=True, max_iter=100, tol=0.0025)
-    ridge.fit(x, y[j])
-    y_pred = ridge.predict(test_x)
-    preds_Ridge.append(sigmoid(y_pred))
 
 preds_FMFTRL = []
 for i, j in enumerate(columns):
@@ -130,7 +82,7 @@ for i, j in enumerate(columns):
                     D=x.shape[1], alpha_fm=0.1,
                     L2_fm=0.5, init_fm=0.01, weight_fm= 50.0,
                     D_fm=200, e_noise=0.0, iters=3,
-                    inv_link="identity", e_clip=1.0, threads=4, use_avx= 1, verbose=1
+                    inv_link="identity", threads=8
                 )
     fm_ftrl.fit(x, y[j])
     y_pred = fm_ftrl.predict(test_x)
@@ -138,6 +90,6 @@ for i, j in enumerate(columns):
 
 submission = pd.DataFrame({'id': df_test['id']})
 for i, name in enumerate(columns):
-    submission[name] = 0.3 * preds_LGBM[i] + 0.3 * preds_Ridge[i] + 0.4 * preds_FMFTRL[i]
+    submission[name] = preds_FMFTRL[i]
 
-submission.to_csv("../submission/LGBM_Ridge_FMFTRL.csv", index=False)
+submission.to_csv("../submission/FMFTRL.csv", index=False)
